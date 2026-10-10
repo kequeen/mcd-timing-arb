@@ -16,10 +16,16 @@ from arb_core import (  # noqa: E402
     P_MIN,
     Asset,
     Campaign,
+    _coerce_float,
+    _first_of,
     analyze,
     at_risk_value,
     action_day_rationale,
     best_action_day,
+    build_report,
+    campaign_density,
+    normalize_points,
+    pick_best_density_day,
     build_report,
     decay,
     effective_value,
@@ -316,7 +322,7 @@ def test_build_report() -> None:
           len(s["immediate_action_today"]) == 1 and s["immediate_action_today"][0]["title"] == "今日到期大额券",
           f"实际 {s['immediate_action_today']}")
 
-    check("最佳行动日落在今天或未来", rep["best_action_day"] >= TODAY.isoformat())
+    check("最佳行动日落在今天或未来", rep["action_day"] >= TODAY.isoformat())
     check("行动日理由非空", len(rep["rationale"]) > 0)
     check("活动被识别为进行中", len(s["active_campaigns"]) == 1)
     check("已过期券被标记", any(r["days_left"] < 0 for r in rep["assets"]))
@@ -336,7 +342,7 @@ def test_build_report_empty() -> None:
     rep = build_report([], [], TODAY)
     check("空资产不崩溃", rep["summary"]["asset_count"] == 0)
     check("空资产总面值为 0", approx(rep["summary"]["total_face_value"], 0.0))
-    check("空资产最佳行动日为今天", rep["best_action_day"] == TODAY.isoformat())
+    check("空资产最佳行动日为今天", rep["action_day"] == TODAY.isoformat())
 
 
 def test_analyze_end_to_end() -> None:
@@ -353,10 +359,13 @@ def test_analyze_end_to_end() -> None:
     }
     rep = analyze(snapshot, TODAY)
     check("端到端解析出 1 张券", rep["summary"]["asset_count"] == 1)
-    check("端到端识别活动增益", rep["best_action_day_gain"] == 20.0,
-          f"实际 {rep['best_action_day_gain']}")
-    check("最佳行动日命中活动日",
-          rep["best_action_day"] == "2026-10-11", f"实际 {rep['best_action_day']}")
+    check("端到端识别活动密度日", rep["best_density_day"] == "2026-10-11",
+          f"实际 {rep['best_density_day']}")
+    check("行动日采用活动密度依据",
+          rep["action_day_basis"] == "activity_density",
+          f"实际 {rep['action_day_basis']}")
+    check("行动日命中活动日",
+          rep["action_day"] == "2026-10-11", f"实际 {rep['action_day']}")
 
 
 def test_stability() -> None:
@@ -374,6 +383,172 @@ def test_stability() -> None:
     a = analyze(snapshot, TODAY)
     b = analyze(snapshot, TODAY)
     check("两次分析结果完全一致", a == b)
+
+
+def test_real_mcp_schema() -> None:
+    """针对麦当劳 MCP v1.0.0 真实返回结构的回归测试。
+
+    这组断言的来源是真实 API 快照，不是猜测的字段名。
+    2026-10-10 实测发现真实结构与离线假设的四处关键差异：
+      1. 面额在 denomination，单位「分」（1390 = ¥13.90）
+      2. 失效日字段是 tradeEndDate，不是 expireAt
+      3. 活动名在 articleDto.title，activityTitle 恒为空串
+      4. 活动为 data.dailyList[].events[] 三层嵌套
+    """
+    print("\n[14] 真实 MCP 结构适配")
+
+    # 真实券结构（脱敏后）
+    real_coupon = {
+        "data": {"coupons": [{
+            "id": "CB8364AECC7DFF7E6A1599A9B41C48C8",
+            "code": "MCD60149V808840020910",
+            "title": "随心配1+1套餐",
+            "discountInfo": {
+                "discountValue": "0", "discountDesc": "用券价格",
+                "discountTypePosition": 1, "discountTypeText": "¥",
+            },
+            "tradeStartDate": "2026-10-08",
+            "tradeEndDate": "2026-10-15",
+            "tradeStartDateTime": "2026-10-08 00:00:00",
+            "tradeEndDateTime": "2026-10-15 23:59:59",
+            "denomination": 1390,
+            "currentBalance": 1390,
+            "totalCount": 1, "totalAvailableCount": 1,
+            "orderTypes": [1], "weekdays": [],
+            "tags": [{"type": 2, "value": "pickup", "label": "到店专用"}],
+            "receivedDaysMsg": "2日前收到",
+            "activityStage": None,
+        }]},
+    }
+    assets = normalize_coupons(real_coupon, TODAY)
+    check("真实结构能解析出券", len(assets) == 1, f"实际 {len(assets)}")
+    if assets:
+        a = assets[0]
+        check("面额从 denomination 的「分」换算为元",
+              approx(a.face_value, 13.9), f"实际 {a.face_value}（1390 分）")
+        check("未把 13.9 误读成 1390", a.face_value < 100,
+              "分/元单位混用会导致夸大 100 倍")
+        check("失效日取自 tradeEndDate", a.expires == date(2026, 10, 15),
+              f"实际 {a.expires}")
+        check("生效日取自 tradeStartDate", a.acquired == date(2026, 10, 8))
+        check("discountValue=0 时不被当作缺失",
+              a.face_value == 13.9, "0 是有效值，表示固定售价券")
+
+    # discountInfo 兜底路径（无 denomination 的情况）
+    no_denom = {"data": [{"title": "减¥5券", "discountInfo": {
+        "discountValue": "5.00", "discountTypeText": "¥"},
+        "expireAt": "2026-10-12"}]}
+    a2 = normalize_coupons(no_denom, TODAY)
+    check("无 denomination 时回退 discountInfo",
+          len(a2) == 1 and approx(a2[0].face_value, 5.0),
+          f"实际 {a2[0].face_value if a2 else 'N/A'}")
+
+    # 真实活动结构
+    real_camp = {"data": {"currentTime": "2026-10-10 14:26:40", "dailyList": [
+        {"date": "2026-10-07", "dateText": "2026年10月7日 往期回顾", "events": [
+            {"activityCode": "45f3", "activityStage": 3, "activityTitle": "",
+             "price": "0",
+             "articleDto": {"title": "超值9.9元早餐两件套陪你开工啦",
+                            "highlights": "9.9元超值早餐正式上新!"}}]},
+        {"date": "2026-10-10", "dateText": "2026年10月10日 今日", "events": [
+            {"activityCode": "a1", "activityStage": 3, "activityTitle": "",
+             "price": "0", "articleDto": {"title": "韩式风味蘸酱上新"}},
+            {"activityCode": "a2", "activityStage": 3, "activityTitle": "",
+             "price": "0", "articleDto": {"title": "蓝莓爆爆珠麦旋风上新"}}]},
+        {"date": "2026-10-12", "dateText": "", "events": [
+            {"activityCode": "b1", "activityStage": 3, "activityTitle": "",
+             "price": "0", "articleDto": {"title": "蓝莓爆爆珠麦旋风上新"}},
+            {"activityCode": "b2", "activityStage": 3, "activityTitle": "",
+             "price": "0", "articleDto": {"title": "乐享90分钟亲子时间"}}]},
+    ], "subscribedEvents": []}}
+    camps = normalize_campaigns(real_camp, TODAY)
+    check("真实三层嵌套能解析出 5 场活动", len(camps) == 5, f"实际 {len(camps)}")
+    check("活动名取自 articleDto.title（activityTitle 为空串）",
+          any(c.title == "韩式风味蘸酱上新" for c in camps))
+    check("活动日期取自父级 date", any(c.start == date(2026, 10, 12) for c in camps))
+    check("price='0' 不被当作有效增益",
+          all(c.estimated_gain == 0.0 for c in camps),
+          "接口未提供增益时不应编造数字")
+
+    dens = campaign_density(camps)
+    by_day = {d.day: d.total for d in dens}
+    check("10-10 密度为 2", by_day.get(date(2026, 10, 10)) == 2,
+          f"实际 {by_day.get(date(2026, 10, 10))}")
+    check("10-12 密度为 2", by_day.get(date(2026, 10, 12)) == 2)
+
+    # 密度推荐应跳过今天（今天所有进行中活动都堆在今天）
+    assets_real = normalize_coupons(real_coupon, TODAY)
+    best = pick_best_density_day(dens, TODAY, assets_real, 21)
+    check("密度推荐日不会是今天（今天被活动堆砌污染）",
+          best is None or best.day > TODAY, f"实际 {best}")
+
+    # 真实积分结构
+    real_pts = {"data": {"availablePoint": "973.4", "accumulativePoint": "10715.7",
+                         "currentMouthExpirePoint": "36.8", "expiredPoint": "1641.3",
+                         "frozenPoint": "0", "currency": "麦享会积分"}}
+    p = normalize_points(real_pts)
+    check("积分可用值解析（字符串型）", approx(p.available, 973.4))
+    check("临期积分解析（本月将过期）", approx(p.expiring_this_month, 36.8),
+          f"实际 {p.expiring_this_month}")
+    check("临期积分即为风险敞口", approx(p.at_risk, 36.8))
+    check("已过期积分单独记录", approx(p.expired, 1641.3))
+
+
+def test_density_respects_asset_lifetime() -> None:
+    """密度高≠该去：若推荐日会让临期券归零，必须回退到今天。"""
+    print("\n[15] 活动密度不得凌驾于券的寿命")
+    camps = [
+        Campaign("c1", "密集活动", TODAY + timedelta(days=3),
+                 TODAY + timedelta(days=3), 0.0),
+        Campaign("c2", "密集活动2", TODAY + timedelta(days=3),
+                 TODAY + timedelta(days=3), 0.0),
+        Campaign("c3", "密集活动3", TODAY + timedelta(days=3),
+                 TODAY + timedelta(days=3), 0.0),
+    ]
+    dens = campaign_density(camps)
+    # 一张 ¥500 券明天就到期
+    assets = [Asset("a", "coupon", "大额明日到期券", 500.0,
+                    TODAY, TODAY + timedelta(days=1))]
+    rep = build_report(assets, camps, TODAY)
+    check("高密度日会让大额券归零时，行动日回退到今天",
+          rep["action_day"] == TODAY.isoformat(), f"实际 {rep['action_day']}")
+    check("回退依据被标记为 density 但仍保守处理",
+          rep["best_density_day"] == (TODAY + timedelta(days=3)).isoformat())
+    check("今日仍有资产可用",
+          rep["best_action_day_valid_assets"] == 500.0)
+
+
+def test_multiday_campaign_flat_schema() -> None:
+    """扁平格式的多日活动区间不能被退化成单日。"""
+    print("\n[16] 扁平结构的多日活动区间")
+    flat = [
+        {"title": "跨天活动", "startTime": "2026-10-10",
+         "endTime": "2026-10-13", "estimatedGain": 10},
+    ]
+    camps = normalize_campaigns(flat, TODAY)
+    check("解析出 1 档活动", len(camps) == 1)
+    if camps:
+        c = camps[0]
+        check("活动区间完整保留（非单日）",
+              c.start == date(2026, 10, 10) and c.end == date(2026, 10, 13),
+              f"实际 {c.start} ~ {c.end}")
+        check("区间内每日都算覆盖", c.covers(date(2026, 10, 12)))
+        check("区间外不覆盖", not c.covers(date(2026, 10, 14)))
+        check("密度按区间天数累加（4 天）",
+              sum(d.total for d in campaign_density(camps)) == 4,
+              f"实际 {sum(d.total for d in campaign_density(camps))}")
+
+
+def test_first_of_keeps_zero() -> None:
+    """0 是有效值，不能被当假值跳过。"""
+    print("\n[17] 零值不得被误判为缺失")
+    item = {"discountValue": "0", "price": "0"}
+    check("_first_of 保留 0 值", _first_of(item, "discountValue") == "0",
+          f"实际 {_first_of(item, 'discountValue')!r}")
+    check("字符串 '0' 可转为浮点 0.0", approx(_coerce_float("0"), 0.0))
+    check("None 才视为缺失", _first_of({"a": None}, "a") is None)
+    check("空字符串视为缺失", _first_of({"a": ""}, "a") is None)
+    check("布尔值不被误转为浮点", _coerce_float(True) is None)
 
 
 def main() -> int:
@@ -397,6 +572,10 @@ def main() -> int:
         test_build_report_empty,
         test_analyze_end_to_end,
         test_stability,
+        test_real_mcp_schema,
+        test_density_respects_asset_lifetime,
+        test_multiday_campaign_flat_schema,
+        test_first_of_keeps_zero,
     ):
         fn()
 

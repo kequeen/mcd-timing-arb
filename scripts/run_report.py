@@ -23,6 +23,11 @@ WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _money(val: float) -> str:
+    """金额显示：整数不带小数，非整数保留一位，避免把 13.9 显示成 14。"""
+    return f"{val:.0f}" if abs(val - round(val)) < 0.005 else f"{val:.1f}"
+
+
 def _fmt(day_iso: str) -> str:
     y, m, d = (int(x) for x in day_iso.split("-"))
     return f"{day_iso}（{WEEKDAYS[date(y, m, d).weekday()]}）"
@@ -45,7 +50,7 @@ def render_text(rep: dict) -> str:
     if today_items:
         total = sum(a["face_value"] for a in today_items)
         lines.append("")
-        lines.append(f"⚠今日 / 明日到期：{len(today_items)} 项，合计 ¥{total:.0f}")
+        lines.append(f"⚠今日 / 明日到期：{len(today_items)} 项，合计 ¥{_money(total)}")
 
     lines.append("")
     lines.append("-" * 62)
@@ -57,7 +62,7 @@ def render_text(rep: dict) -> str:
         dl_txt = f"已过期 {-dl} 天" if dl < 0 else f"剩{dl} 天"
         lines.append(
             f"  [{a['verdict']:<4}] {a['title']:<{width}}  "
-            f"¥{a['face_value']:>6.0f}  {dl_txt:>10}  {a['advice']}"
+            f"¥{_money(a['face_value']):>6}  {dl_txt:>10}  {a['advice']}"
         )
 
     lines.append("")
@@ -65,30 +70,72 @@ def render_text(rep: dict) -> str:
     lines.append("汇总")
     lines.append("-" * 62)
     lines.append(f"  有效券 {s['active_count']} 张（另有 {s['expired_count']} 张已过期）")
-    lines.append(f"  总面值           ¥{s['total_face_value']:.0f}")
-    lines.append(f"  兑现期望价值     ¥{s['total_effective_value']:.0f}")
-    lines.append(f"  风险敞口         ¥{s['total_at_risk_value']:.0f}   ← 不行动可能永久损失")
+    lines.append(f"  总面值           ¥{_money(s['total_face_value'])}")
+    lines.append(f"  兑现期望价值     ¥{_money(s['total_effective_value'])}")
+    lines.append(f"  风险敞口         ¥{_money(s['total_at_risk_value'])}   ← 不行动可能永久损失")
     if s["active_campaigns"]:
-        gains = "、".join(f"{c['title']}(+¥{c['gain']:.0f})" for c in s["active_campaigns"])
-        lines.append(f"  进行中活动       {gains}")
+        lines.append(
+            f"  今日进行中       {len(s['active_campaigns'])} 场（详见下方活动密度）"
+        )
     if s["upcoming_campaigns"]:
-        soon = "、".join(f"{c['title']}(+¥{c['gain']:.0f})" for c in s["upcoming_campaigns"])
-        lines.append(f"  即将开始         {soon}")
+        lines.append(
+            f"  未来活动         {len(s['upcoming_campaigns'])} 场（详见下方活动密度）"
+        )
+
+    lines.append("")
+    lines.append("-" * 62)
+    lines.append("活动密度（未来 21 天，来自 campaign-calendar 真实数据）")
+    lines.append("-" * 62)
+    density = sorted(rep.get("activity_density", []), key=lambda x: x["day"])
+    shown = 0
+    if density:
+        for row in density:
+            if row["total"] == 0:
+                continue
+            mark = ""
+            if rep.get("best_density_day") == row["day"]:
+                mark = "  ← 推荐"
+            title = row["titles"][0]
+            if len(title) > 26:
+                title = title[:26] + "…"
+            lines.append(f"  {row['day']}  {row['total']:>2} 场  {title}{mark}")
+            shown += 1
+    if shown == 0:
+        lines.append("  无活动数据")
+
+    if rep.get("best_density_day"):
+        lines.append("")
+        lines.append(f"  推荐日：{rep['best_density_day']}　{rep['best_density_summary']}")
+
+    pts = rep.get("points")
+    if pts:
+        lines.append("")
+        lines.append("-" * 62)
+        lines.append("积分账户（来自 query-my-account）")
+        lines.append("-" * 62)
+        lines.append(f"  可用积分{pts['available']:>10g}")
+        lines.append(f"  累计积分         {pts['accumulative']:>10g}")
+        lines.append(f"  本月将过期{pts['expiring_this_month']:>10g}   ← 不换掉就归零")
+        lines.append(f"  历史已过期       {pts['expired']:>10g}")
+        lines.append(f"  {pts['advice']}")
 
     lines.append("")
     lines.append("-" * 62)
     lines.append("最佳行动日")
     lines.append("-" * 62)
-    lines.append(f"  {_fmt(rep['best_action_day'])}")
-    if rep["best_action_day_gain"] > 0:
-        lines.append(f"  当日活动增益约 ¥{rep['best_action_day_gain']:.0f}")
+    lines.append(f"  {_fmt(rep['action_day'])}")
+    basis = rep.get("action_day_basis")
+    if basis == "activity_density":
+        lines.append("  依据：活动密度（campaign-calendar 真实数据）")
+    elif basis == "gain_estimate":
+        lines.append("  依据：活动增益估算（接口未提供增益字段）")
     if rep["best_action_day_valid_assets"] > 0:
         lines.append(
-            f"  当日仍有 ¥{rep['best_action_day_valid_assets']:.0f} 券有效"
+            f"  当日仍有 ¥{_money(rep['best_action_day_valid_assets'])} 券有效"
         )
     if rep.get("best_action_day_urgent_before", 0) > 0:
         lines.append(
-            f"  注意：另有 ¥{rep['best_action_day_urgent_before']:.0f} 券在该日之前到期，需更早用"
+            f"  注意：另有 ¥{_money(rep['best_action_day_urgent_before'])} 券在该日之前到期，需更早用"
         )
     for reason in rep["rationale"]:
         lines.append(f"  · {reason}")
@@ -117,19 +164,19 @@ def render_md(rep: dict) -> str:
         dl = a["days_left"]
         dl_txt = f"已过期 {-dl} 天" if dl < 0 else f"{dl} 天"
         out.append(
-            f"| **{a['verdict']}** | {a['title']} | ¥{a['face_value']:.0f} "
+            f"| **{a['verdict']}** | {a['title']} | ¥{_money(a['face_value'])} "
             f"| {dl_txt} | {a['advice']} |"
         )
     out.append("")
     out.append("### 汇总")
     out.append("")
-    out.append(f"- 总面值：**¥{s['total_face_value']:.0f}**")
-    out.append(f"- 兑现期望价值：¥{s['total_effective_value']:.0f}")
-    out.append(f"- 风险敞口：**¥{s['total_at_risk_value']:.0f}**（不行动可能永久损失）")
+    out.append(f"- 总面值：**¥{_money(s['total_face_value'])}**")
+    out.append(f"- 兑现期望价值：¥{_money(s['total_effective_value'])}")
+    out.append(f"- 风险敞口：**¥{_money(s['total_at_risk_value'])}**（不行动可能永久损失）")
     out.append("")
     out.append("### 最佳行动日")
     out.append("")
-    out.append(f"**{_fmt(rep['best_action_day'])}**")
+    out.append(f"**{_fmt(rep['action_day'])}**")
     out.append("")
     for reason in rep["rationale"]:
         out.append(f"- {reason}")

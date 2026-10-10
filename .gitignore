@@ -7,3 +7,5 @@ __pycache__/
 *.token
 mcp-config.json
 snapshot-real.json
+# 本地记忆目录，不属于参赛项目
+.workbuddy/
