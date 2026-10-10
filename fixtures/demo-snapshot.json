@@ -1,0 +1,78 @@
+{
+  "_comment": "离线样例数据，字段结构对齐麦当劳 MCP 真实返回，用于无 Token 环境验证。日期以基准日2026-10-10 为参照。",
+  "_baseline_date": "2026-10-10",
+  "coupons": {
+    "data": [
+      {
+        "couponId": "C2026OCT001",
+        "couponName": "午餐立减",
+        "discount": "¥45.00",
+        "startTime": "2026-10-01",
+        "endTime": "2026-10-10",
+        "channel": "app",
+        "desc": "工作日午市使用"
+      },
+      {
+        "couponId": "C2026OCT002",
+        "couponName": "早餐立减",
+        "amount": 18,
+        "startTime": "2026-10-08",
+        "expireAt": "2026-10-12",
+        "channel": "app"
+      },
+      {
+        "couponId": "C2026OCT003",
+        "couponName": "第二份半价",
+        "discount": "¥25.00",
+        "startTime": "2026-10-05",
+        "endTime": "2026-10-15",
+        "channel": "miniprogram"
+      },
+      {
+        "couponId": "C2026OCT004",
+        "couponName": "门店专属甜品券",
+        "value": 12,
+        "startTime": "2026-10-09",
+        "endTime": "2026-10-11",
+        "source": "query-store-coupons"
+      },
+      {
+        "couponId": "C2026OCT005",
+        "couponName": "周末双人餐套餐券",
+        "amount": 40,
+        "startTime": "2026-10-01",
+        "endTime": "2026-10-26",
+        "channel": "app"
+      },
+      {
+        "couponId": "C2026OCT006",
+        "couponName": "过期示例券",
+        "amount": 99,
+        "startTime": "2026-09-01",
+        "endTime": "2026-10-06",
+        "channel": "app"
+      }
+    ]
+  },
+  "campaigns": [
+    {
+      "activityName": "周末双人餐加赠",
+      "startTime": "2026-10-17",
+      "endTime": "2026-10-18",
+      "estimatedGain": 22,
+      "desc": "指定套餐赠小食"
+    },
+    {
+      "activityName": "秋日第二杯半价",
+      "startTime": "2026-10-10",
+      "endTime": "2026-10-15",
+      "estimatedGain": 9
+    },
+    {
+      "activityName": "会员日满减",
+      "startTime": "2026-10-28",
+      "endTime": "2026-10-30",
+      "estimatedGain": 15
+    }
+  ]
+}
