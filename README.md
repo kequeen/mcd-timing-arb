@@ -3,6 +3,18 @@
 > 你的券在悄悄过期。麦门时序套利引擎把麦当劳 MCP 返回的券、活动日历、
 > 积分和商城数据，量化成一张「今天该动还是该等」的行动日历。
 
+<p align="center">
+  <a href="https://github.com/kequeen/mcd-timing-arb/stargazers">
+    <img src="https://img.shields.io/github/stars/kequeen/mcd-timing-arb?style=social" alt="GitHub stars" />
+  </a>
+  <a href="https://github.com/kequeen/mcd-timing-arb/network/members">
+    <img src="https://img.shields.io/github/forks/kequeen/mcd-timing-arb?style=social" alt="GitHub forks" />
+  </a>
+</p>
+
+**如果这个项目对你有用，欢迎点一颗 Star ⭐️** —— 本项目正参加麦当劳程序员创意开发大赛，
+公开 Star 数是唯一的排名依据，这颗 Star 会直接决定它能否进入排行榜。
+
 ---
 
 ## 一、它解决什么问题
@@ -50,7 +62,7 @@
 ### 安装与配置
 
 ```bash
-git clone https://github.com/<your-account>/mcd-timing-arb.git
+git clone https://github.com/kequeen/mcd-timing-arb.git
 cd mcd-timing-arb
 ```
 
@@ -147,6 +159,7 @@ mcd-timing-arb/
 ├── MCP_INTEGRATION.md           MCP 工具与调用流程说明
 ├── mcp-config.example.json      脱敏配置示例
 ├── SKILL.md                     Skill 定义与指令
+├── workbuddy.md                 WorkBuddy 开发上下文记录
 ├── scripts/
 │   ├── arb_core.py              时间价值评分核心（纯函数，无依赖）
 │   ├── run_report.py            命令行报告生成
