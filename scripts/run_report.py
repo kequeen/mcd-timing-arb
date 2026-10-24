@@ -59,7 +59,7 @@ def render_text(rep: dict) -> str:
     width = max(len(a["title"]) for a in rep["assets"])
     for a in rep["assets"]:
         dl = a["days_left"]
-        dl_txt = f"已过期 {-dl} 天" if dl < 0 else f"剩{dl} 天"
+        dl_txt = f"已过期 {-dl} 天" if dl < 0 else f"剩 {dl} 天"
         lines.append(
             f"  [{a['verdict']:<4}] {a['title']:<{width}}  "
             f"¥{_money(a['face_value']):>6}  {dl_txt:>10}  {a['advice']}"

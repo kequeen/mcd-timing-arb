@@ -256,20 +256,27 @@ def _money(val: float) -> str:
 
 
 def _verdict(days_left: int, value: float, today: date, campaign_gain: float) -> tuple[str, str]:
-    """把天数与价值映射成一句人话决策。"""
+    """把天数与价值映射成一句人话决策。
+
+    advice 只给「该怎么做」，**不再重复剩余天数**——天数由报告的独立列
+    （剩余天数 / 剩余）承载，与 SKILL.md「输出格式」中
+    `[判定] 券名 ¥金额   剩余天数，说明` 的两段式契约一致。
+    早期版本 advice 自带「剩 N 天」，与该列并排显示会出现
+    「剩5 天  剩 5 天，建议本周内使用」的重复，属展示缺陷。
+    """
     if days_left < 0:
-        return "已失效", "已过期，本次不再计入"
+        return "已失效", "本次不再计入"
     if days_left == 0:
-        return "今日必用", f"¥{_money(value)} 今日到期，务必今天下单"
+        return "今日必用", "务必今天下单"
     if days_left <= 2:
         bonus = f"，且当日有活动增益约 ¥{_money(campaign_gain)}" if campaign_gain > 0 else ""
-        return "紧急", f"仅剩 {days_left} 天，建议今天或明天使用{bonus}"
+        return "紧急", f"建议今天或明天使用{bonus}"
     if days_left <= 7:
         bonus = f"，叠加活动增益约 ¥{_money(campaign_gain)}" if campaign_gain > 0 else ""
-        return "尽快用", f"剩 {days_left} 天，建议本周内使用{bonus}"
+        return "尽快用", f"建议本周内使用{bonus}"
     if days_left <= 21:
-        return "可择时", f"剩 {days_left} 天，择活动日或最佳行动日使用更划算"
-    return "暂缓", f"还有 {days_left} 天，暂不使用，等待更优叠加窗口"
+        return "可择时", "择活动日或最佳行动日使用更划算"
+    return "暂缓", "暂不使用，等待更优叠加窗口"
 
 
 @dataclass

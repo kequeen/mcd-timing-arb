@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -18,6 +19,7 @@ from arb_core import (  # noqa: E402
     Campaign,
     _coerce_float,
     _first_of,
+    _verdict,
     analyze,
     at_risk_value,
     action_day_rationale,
@@ -337,6 +339,21 @@ def test_build_report() -> None:
     check("过期券判定为已失效", rows["d"]["verdict"] == "已失效")
 
 
+def test_advice_does_not_repeat_days() -> None:
+    """第 18 组：advice 不得重复剩余天数。
+
+    剩余天数由报告的独立列承载，advice 只说「该怎么做」。
+    早期版本 advice 自带「剩 N 天」，与该列并排会显示成
+    「剩5 天  剩  5 天，建议本周内使用」——展示缺陷。
+    """
+    print("\n[18] advice 文案不重复剩余天数")
+    for dl in (-4, 0, 1, 2, 5, 12, 30):
+        verdict, advice = _verdict(dl, 13.9, TODAY, 0.0)
+        check(f"{dl} 天券的 advice 不含天数表述",
+              not re.search(r"(剩|仅剩|还有)\s*\d+\s*天", advice),
+              f"verdict={verdict} advice={advice}")
+
+
 def test_build_report_empty() -> None:
     print("\n[11] 空数据边界")
     rep = build_report([], [], TODAY)
@@ -576,6 +593,7 @@ def main() -> int:
         test_density_respects_asset_lifetime,
         test_multiday_campaign_flat_schema,
         test_first_of_keeps_zero,
+        test_advice_does_not_repeat_days,
     ):
         fn()
 

@@ -13,5 +13,6 @@ snapshot-real.json
 # 本地巡检脚本（报名状态监控），不属于参赛项目
 scripts/check_*.py
 scripts/parse_issue252.py
+scripts/parse_252_comments_fixed.py
 scripts/verify_*.py
 scripts/meta_*.py

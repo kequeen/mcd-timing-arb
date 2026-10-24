@@ -12,14 +12,19 @@
 """
 import os
 import re
+import shutil
 import subprocess
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-PY = "/Users/liangnian/.workbuddy/binaries/python/envs/default/bin/python3"
-REPO = "/Users/liangnian/WorkBuddy/mcd"
+# 仓库根目录按脚本位置推导，避免把某人的本地绝对路径写进仓库
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, "docs", "demo-terminal.png")
+
+# 渲染本脚本需要 PIL（第三方库），而 run_report.py 是纯标准库。
+# 优先用带 PIL 的解释器跑真实输出；找不到就退到当前解释器。
+PY = os.environ.get("MCD_PYTHON") or shutil.which("python3") or sys.executable
 
 F_ASCII = "/System/Library/Fonts/Menlo.ttc"
 F_CJK = "/System/Library/Fonts/Hiragino Sans GB.ttc"
