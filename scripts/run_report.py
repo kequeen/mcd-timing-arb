@@ -210,9 +210,23 @@ def main() -> int:
     with open(path, "r", encoding="utf-8") as f:
         snapshot = json.load(f)
 
+    # 基准日期优先级：--today 显式指定 > 快照自带 _baseline_date > 系统日期。
+    # 快照自带基准日是「采集当天」的真实语义；直接拿系统日期会让快照里的券
+    # 全部显示为已过期（访客照抄 README 命令却看到「有效券 0 张」）。
     base = date.fromisoformat(args.today) if args.today else None
-    if base is None and args.demo:
-        base = date.fromisoformat(snapshot.get("_baseline_date", "2026-10-10"))
+    if base is None:
+        raw_base = snapshot.get("_baseline_date")
+        if raw_base:
+            try:
+                base = date.fromisoformat(raw_base)
+            except ValueError:
+                base = None
+    if base is None:
+        print(
+            "提示：快照未声明 _baseline_date，已回退到系统日期"
+            "（券可能显示为已过期，可加 --today YYYY-MM-DD 固定基准日）",
+            file=sys.stderr,
+        )
 
     rep = analyze(snapshot, base)
 

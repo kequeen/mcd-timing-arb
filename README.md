@@ -151,6 +151,12 @@ python3 scripts/run_report.py \
   --snapshot fixtures/real-snapshot.json           # 真实 API 快照
 ```
 
+两条命令都**开箱即用、无需 Token**，且结果完全可复现：
+脚本会自动采用快照自带的采集基准日（`_baseline_date`），
+因此你看到的就是 README 首屏截图里那份输出（有效券 1 张 / ¥13.9 / 剩 5 天），
+不会因为快照里的券已经过期而显示成「有效券 0 张」。
+需要换基准日时加 `--today YYYY-MM-DD` 即可覆盖。
+
 `fixtures/real-snapshot.json` 是从 `mcp.mcd.cn` v1.0.0 采集的真实响应，
 已脱敏（移除图片签名 URL 与 Token）。它的价值在于：
 **确保字段适配不会退化**——真实 API 与文档推测存在四处关键差异，
@@ -172,6 +178,7 @@ mcd-timing-arb/
 ├── mcp-config.example.json      脱敏配置示例
 ├── SKILL.md                     Skill 定义与指令
 ├── workbuddy.md                 WorkBuddy 开发上下文记录
+├── LICENSE                      MIT 开源协议
 ├── docs/
 │   └── demo-terminal.png        真实运行输出截图（README 首屏）
 ├── .github/
@@ -181,7 +188,7 @@ mcd-timing-arb/
 │   ├── run_report.py            命令行报告生成
 │   ├── make_demo_shot.py        生成 README 首屏截图
 │   ├── make_social_card.py      生成社交预览图
-│   └── test_arb_core.py         自测套件（114 项断言）
+│   └── test_arb_core.py         自测套件（123 项断言）
 ├── references/
 │   ├── scoring-model.md         评分模型完整推导
 │   └── mcp-tools.md             MCP 工具清单与真实字段映射
@@ -196,7 +203,7 @@ mcd-timing-arb/
 python3 scripts/test_arb_core.py
 ```
 
-采用**固定基准日期**（2026-10-10），结果完全可复现。114 项断言分三组：
+采用**固定基准日期**（2026-10-10），结果完全可复现。123 项断言分四组：
 
 **模型自洽性**——兑现概率与压力的方向正确性、单调性、
 压力曲线形状（防视野坍缩）、最佳行动日不被高增益活动迷惑、
@@ -209,6 +216,10 @@ python3 scripts/test_arb_core.py
 **零值与边界**（第 15~18 组）——活动密度不得凌驾于券的寿命、
 多日活动区间不被退化为单日、`0` 不被误判为缺失、
 建议文案不重复剩余天数。
+
+**访客可复现性**（第 19 组）——脚本必须采纳快照自带的采集基准日，
+访客照抄上面的命令必须得到与首屏截图一致的输出，
+而不是「有效券 0 张 / 已过期 10 天」。
 
 ### 开发过程中被自测拦下的真实缺陷
 
@@ -226,6 +237,9 @@ python3 scripts/test_arb_core.py
 8. **活动密度被「今日」污染** —— 15 场 vs 未来 1~2 场，择时永久失效
 9. **建议文案重复剩余天数** —— advice 自带「剩 N 天」，
    与报告的剩余天数列并排显示成「剩5 天 剩 5 天，建议本周内使用」
+10. **访客照抄命令看到空报告** —— `--snapshot` 分支不读快照自带的
+    `_baseline_date`，直接取系统日期，导致快照里的券全部显示为已过期，
+    访客第一次动手就看到「有效券 0 张 / 风险敞口 ¥0」
 
 ## 八、隐私与合规
 

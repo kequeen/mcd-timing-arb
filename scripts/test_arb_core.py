@@ -5,12 +5,16 @@
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+ROOT = Path(__file__).resolve().parent.parent
 
 from arb_core import (  # noqa: E402
     P_MAX,
@@ -354,6 +358,54 @@ def test_advice_does_not_repeat_days() -> None:
               f"verdict={verdict} advice={advice}")
 
 
+def test_snapshot_baseline_date_fallback() -> None:
+    """第 19 组：快照自带基准日必须被采纳，而不是回退系统日期。
+
+    早期版本只有 --demo 分支读 `_baseline_date`，--snapshot 分支直接取系统日期。
+    后果很直接：访客照抄 README 的第二条命令，看到的是
+    「有效券 0 张 / 已过期 10 天 / 风险敞口 ¥0」，与 README 首屏截图
+    展示的「有效券 1 张 / ¥13.9」完全对不上——这是「看到→试用→Star」
+    链路上最硬的一个断点，因为它是访客唯一的第一次动手。
+    """
+    print("\n[19] 快照自带基准日被采纳（访客照抄命令即可复现）")
+    real = json.loads((ROOT / "fixtures" / "real-snapshot.json").read_text("utf-8"))
+    check("真实快照声明了 _baseline_date", real.get("_baseline_date") == "2026-10-10",
+          f"实际={real.get('_baseline_date')!r}")
+
+    # 不传 --today 时，必须用快照基准日而不是系统日期
+    snap_path = ROOT / "fixtures" / "real-snapshot.json"
+    base = date.fromisoformat(real["_baseline_date"])
+    rep = analyze(real, base)
+    check("按快照基准日算出 1 张有效券", rep["summary"]["asset_count"] == 1,
+          f"实际={rep['summary']['asset_count']}")
+    check("有效券总面值为 13.9", approx(rep["summary"]["total_face_value"], 13.9))
+    check("风险敞口非零（券确实会归零）",
+          rep["summary"]["total_at_risk_value"] > 0,
+          f"实际={rep['summary']['total_at_risk_value']}")
+
+    # CLI 层：--snapshot 分支也必须读到快照基准日（曾经漏掉的分支）
+    out = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "run_report.py"),
+         "--snapshot", str(snap_path)],
+        capture_output=True, text=True, cwd=str(ROOT),
+    )
+    check("CLI --snapshot 退出码为 0", out.returncode == 0, out.stderr[-200:])
+    check("CLI --snapshot 采用快照基准日 2026-10-10", "基准日期：2026-10-10" in out.stdout,
+          out.stdout[:200])
+    check("CLI --snapshot 不再显示有效券 0 张", "有效券 0 张" not in out.stdout,
+          out.stdout[:300])
+    check("CLI --snapshot 不再显示已过期 10 天", "已过期 10 天" not in out.stdout,
+          out.stdout[:300])
+
+    # --today 显式指定时优先级最高
+    out2 = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "run_report.py"),
+         "--snapshot", str(snap_path), "--today", "2026-10-10"],
+        capture_output=True, text=True, cwd=str(ROOT),
+    )
+    check("CLI --today 优先级最高", "基准日期：2026-10-10" in out2.stdout)
+
+
 def test_build_report_empty() -> None:
     print("\n[11] 空数据边界")
     rep = build_report([], [], TODAY)
@@ -594,6 +646,7 @@ def main() -> int:
         test_multiday_campaign_flat_schema,
         test_first_of_keeps_zero,
         test_advice_does_not_repeat_days,
+        test_snapshot_baseline_date_fallback,
     ):
         fn()
 
